@@ -6,14 +6,23 @@
 #Detects broadcast deauthentication attacks
 
 from scapy.all import *
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, active_children
 import time
 import argparse
 import re
+import datetime
+import signal
 
 #Global variables needed for action
 global alertQueue
 global bssid
+
+#Kill all child processes
+def signalHandler(signnum, frame):
+    for p in active_children():
+        p.terminate()
+    alertQueue.close()
+    quit()
 
 def action(packet):
     try:
@@ -27,7 +36,9 @@ def action(packet):
         
 
 def sniffTraffic():
-    sniff(prn=action)
+    #hopefully prevent sniff from eating all of the system's memory
+    while True:
+        sniff(count=10000, prn=action)
 
 def timeout():
     time.sleep(1)
@@ -47,6 +58,7 @@ if __name__ == "__main__":
 
     alertQueue = Queue()
     sniffer = Process(target=sniffTraffic)
+    signal.signal(signal.SIGINT, signalHandler)
     sniffer.start()
     
     attack = False
@@ -58,7 +70,7 @@ if __name__ == "__main__":
             if attack == False:
                 attack = True
                 if count == 0:
-                    print "broadcast deauthentication packet detected from router"
+                    print "broadcast deauthentication packet detected from router at", datetime.datetime.now()
                 if not timer.is_alive():
                     timer = Process(target=timeout)
                     timer.start()
@@ -71,7 +83,7 @@ if __name__ == "__main__":
                     timer = Process(target=timeout)
                     timer.start()
                 else:
-                    print "deauthentication ended,", count, "deauthentication packets were detected"
+                    print "deauthentication ended at", datetime.datetime.now(),",", count, "deauthentication packets were detected"
                     count = 0
             else:
                 timer = Process(target=timeout)
